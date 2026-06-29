@@ -1,0 +1,31 @@
+[tool.uv.workspace]
+members = ["shared", "ingest", "management"]
+
+[dependency-groups]
+dev = ["ruff>=0.15", "pytest>=9"]
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "F", "I", "UP", "SIM", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shared", "ingest", "management"]
+
+[tool.ruff.format]
+quote-style = "single"
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["shared", "ingest", "management"]
+
+[tool.pyright]
+include = ["shared", "ingest", "management"]
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
