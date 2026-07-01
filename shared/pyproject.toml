@@ -12,3 +12,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/shared"]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.4.0",
+]
