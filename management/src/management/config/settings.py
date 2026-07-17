@@ -13,8 +13,7 @@ environ.Env.read_env(WORKSPACE_ROOT / '.env')
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS',
-    default=['127.0.0.1', 'localhost'])
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -23,7 +22,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
     'management.accounts.apps.AccountsConfig',
     'management.webhooks.apps.WebhooksConfig',
 ]

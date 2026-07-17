@@ -42,4 +42,3 @@ async def conn():
     finally:
         await transaction.rollback()
         await connection.close()
-    

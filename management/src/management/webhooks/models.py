@@ -16,7 +16,7 @@ class Event(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.source} - {self.idempotency_key}"
+        return f'{self.source} - {self.idempotency_key}'
 
 
 class OutboxStatus(models.TextChoices):
@@ -28,14 +28,12 @@ class OutboxMessage(models.Model):
     status = models.CharField(
         max_length=20,
         choices=OutboxStatus.choices,
-        default=OutboxStatus.PENDING
+        default=OutboxStatus.PENDING,
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
     event = models.ForeignKey(
-        Event,
-        on_delete=models.CASCADE,
-        related_name='outbox_messages'
+        Event, on_delete=models.CASCADE, related_name='outbox_messages'
     )
 
     class Meta:
