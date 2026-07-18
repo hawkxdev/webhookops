@@ -1,9 +1,13 @@
 """Тесты контракта записи."""
 
+import asyncpg
+
 from shared.persistence import persist_event
 
 
-async def test_first_call_creates_event_and_outbox(conn):
+async def test_first_call_creates_event_and_outbox(
+    conn: asyncpg.Connection,
+) -> None:
     result = await persist_event(
         conn,
         source='generic_json',
@@ -27,7 +31,9 @@ async def test_first_call_creates_event_and_outbox(conn):
     assert outbox == 1
 
 
-async def test_duplicate_key_does_not_create_second_event(conn):
+async def test_duplicate_key_does_not_create_second_event(
+    conn: asyncpg.Connection,
+) -> None:
     first = await persist_event(
         conn,
         source='generic_json',
