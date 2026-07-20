@@ -32,3 +32,8 @@ async def get_conn(request: Request) -> AsyncIterator[asyncpg.Connection]:
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         yield conn
+
+
+async def get_pool(request: Request) -> asyncpg.Pool:
+    """Общий пул соединений."""
+    return request.app.state.pool

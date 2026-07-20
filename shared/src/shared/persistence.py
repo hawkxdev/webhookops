@@ -4,6 +4,9 @@ import json
 from typing import NamedTuple
 
 import asyncpg
+from asyncpg.pool import PoolConnectionProxy
+
+DBConnection = asyncpg.Connection | PoolConnectionProxy
 
 
 class PersistResult(NamedTuple):
@@ -32,7 +35,7 @@ _SELECT_EVENT_ID = """
 
 
 async def persist_event(
-    conn: asyncpg.Connection,
+    conn: DBConnection,
     *,
     source: str,
     idempotency_key: str,
