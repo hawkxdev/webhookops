@@ -44,3 +44,23 @@ async def test_valid_webhook_is_accepted_and_stored(
         event_id,
     )
     assert outbox == 1
+
+
+async def test_duplicate_webhook_returns_indistinguishable_accepted_response(
+    client: AsyncClient,
+    signed_headers: Callable[[bytes], dict[str, str]],
+) -> None:
+    headers = signed_headers(BODY) | {'Idempotency-Key': IDEMPOTENCY_KEY}
+    initial_response = await client.post(
+        f'/v1/webhooks/{SOURCE}',
+        content=BODY,
+        headers=headers,
+    )
+    retry_response = await client.post(
+        f'/v1/webhooks/{SOURCE}',
+        content=BODY,
+        headers=headers,
+    )
+    assert initial_response.status_code == status.HTTP_202_ACCEPTED
+    assert retry_response.status_code == initial_response.status_code
+    assert initial_response.content == retry_response.content
