@@ -2,15 +2,19 @@
 
 import hashlib
 import json
+import logging
+import uuid
 from typing import Annotated
 
 import asyncpg
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 
 from ingest.config import Settings, get_settings
 from ingest.db import get_conn, get_pool, lifespan
 from ingest.security import verify_signature
 from shared.persistence import persist_event
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(lifespan=lifespan)
 
@@ -107,3 +111,22 @@ async def receive_webhook(
         )
 
     return {'status': 'accepted'}
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(
+    request: Request, exc: Exception
+) -> Response:
+    """Обработка неперехваченных исключений."""
+    trace_id = str(uuid.uuid4())[:8]
+    logger.error(
+        'Необработанное исключение приёма trace_id=%s type=%s path=%s',
+        trace_id,
+        type(exc).__name__,
+        request.url.path,
+        exc_info=exc,
+    )
+    return Response(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        headers={'X-Trace-Id': trace_id},
+    )

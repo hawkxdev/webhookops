@@ -65,7 +65,8 @@ async def client(conn: asyncpg.Connection) -> AsyncIterator[AsyncClient]:
     app.dependency_overrides[get_settings] = build_test_settings
     app.dependency_overrides[get_pool] = lambda: _SingleConnPool(conn)
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url='http://test'
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url='http://test',
     ) as async_client:
         yield async_client
     app.dependency_overrides.clear()
