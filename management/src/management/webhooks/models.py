@@ -1,5 +1,6 @@
-"""Модели события и outbox."""
+"""Модели вебхуков."""
 
+from django.core.validators import URLValidator
 from django.db import models
 
 
@@ -70,3 +71,39 @@ class OutboxMessage(models.Model):
     def __str__(self):
         """Статус и время."""
         return f'{self.status} - {self.created_at}'
+
+
+class Subscriber(models.Model):
+    """Получатель доставленных событий."""
+
+    name = models.CharField(max_length=50, verbose_name='Имя')
+    target_url = models.URLField(
+        verbose_name='URL',
+        validators=[URLValidator(schemes=['https', 'http'])],
+    )
+    is_active = models.BooleanField(verbose_name='Активный', default=True)
+    created_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Создано'
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
+
+    class Meta:
+        verbose_name = 'Подписчик'
+        verbose_name_plural = 'Подписчики'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name'],
+                name='uniq_subscriber_name',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(target_url__startswith='https://')
+                    | models.Q(target_url__startswith='http://')
+                ),
+                name='subscriber_target_url_scheme',
+            ),
+        ]
+
+    def __str__(self):
+        """Имя подписчика."""
+        return self.name
