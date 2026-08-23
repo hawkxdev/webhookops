@@ -161,6 +161,10 @@ uv run pytest
 
 [Issues](https://github.com/hawkxdev/webhookops/issues)
 
+## License
+
+[MIT](LICENSE)
+
 ## Author
 
 [hawkxdev](https://github.com/hawkxdev)
