@@ -1,4 +1,4 @@
-"""Модели вебхуков."""
+"""Доменные модели вебхуков."""
 
 from django.core.validators import URLValidator
 from django.db import models
@@ -35,7 +35,7 @@ class OutboxStatus(models.TextChoices):
     """Статусы исходящего сообщения."""
 
     PENDING = 'pending', 'Ожидает отправки'
-    # позже DISPATCHED, FAILED, DEAD
+    # Статусы добавятся вместе с реализацией публикатора.
 
 
 class OutboxMessage(models.Model):
@@ -107,3 +107,121 @@ class Subscriber(models.Model):
     def __str__(self):
         """Имя подписчика."""
         return self.name
+
+
+class DeliveryAttemptStatus(models.TextChoices):
+    """Статусы попыток доставки."""
+
+    STARTED = 'started', 'Начата'
+    SUCCEEDED = 'succeeded', 'Завершена успешно'
+    FAILED = 'failed', 'Завершена с ошибкой'
+
+
+class DeliveryAttempt(models.Model):
+    """Попытка доставки сообщения."""
+
+    status = models.CharField(
+        max_length=20,
+        choices=DeliveryAttemptStatus.choices,
+        default=DeliveryAttemptStatus.STARTED,
+        verbose_name='Статус попытки',
+    )
+
+    attempt_no = models.PositiveSmallIntegerField(
+        verbose_name='Номер попытки',
+    )
+
+    started_at = models.DateTimeField(auto_now_add=True, verbose_name='Начата')
+
+    http_status = models.PositiveSmallIntegerField(
+        null=True,
+        verbose_name='Статус ответа',
+    )
+
+    error = models.CharField(max_length=100, verbose_name='Причина отказа')
+
+    finished_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='Завершено'
+    )
+
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.CASCADE,
+        db_index=False,
+        related_name='delivery_attempts',
+        verbose_name='Событие',
+    )
+
+    subscriber = models.ForeignKey(
+        Subscriber,
+        on_delete=models.PROTECT,
+        related_name='delivery_attempts',
+        verbose_name='Подписчик',
+    )
+
+    class Meta:
+        verbose_name = 'Попытка доставки сообщения'
+        verbose_name_plural = 'Попытки доставки сообщений'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['event', 'subscriber', 'attempt_no'],
+                name='uniq_delivery_attempt_number',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(attempt_no__gte=1),
+                name='delivery_attempt_no_gte_1',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(status__in=DeliveryAttemptStatus.values),
+                name='delivery_attempt_status_valid',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        status=DeliveryAttemptStatus.STARTED,
+                        finished_at__isnull=True,
+                    )
+                    | models.Q(
+                        status__in=[
+                            DeliveryAttemptStatus.SUCCEEDED,
+                            DeliveryAttemptStatus.FAILED,
+                        ],
+                        finished_at__isnull=False,
+                    )
+                ),
+                name='delivery_attempt_completion_consistent',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(http_status__isnull=True)
+                    | models.Q(http_status__gte=100, http_status__lte=599)
+                ),
+                name='delivery_attempt_http_status_valid',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        status=DeliveryAttemptStatus.STARTED,
+                        http_status__isnull=True,
+                        error='',
+                    )
+                    | models.Q(
+                        status=DeliveryAttemptStatus.SUCCEEDED,
+                        http_status__isnull=False,
+                        error='',
+                    )
+                    | (
+                        models.Q(status=DeliveryAttemptStatus.FAILED)
+                        & (
+                            models.Q(http_status__isnull=False)
+                            | ~models.Q(error='')
+                        )
+                    )
+                ),
+                name='delivery_attempt_result_consistent',
+            ),
+        ]
+
+    def __str__(self):
+        """Описание попытки доставки."""
+        return f'{self.event} {self.subscriber} {self.attempt_no}'
