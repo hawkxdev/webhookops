@@ -1,96 +1,96 @@
 # WebhookOps
 
-Локально запускаемый шлюз надёжной доставки вебхуков. Принимает внешние вебхуки на горячем пути, проверяет HMAC-подпись, дедуплицирует по ключу идемпотентности, атомарно сохраняет событие вместе с записью на доставку (`transactional outbox`) и асинхронно доставляет подписчикам с повторами, `DLQ` и ручным повтором.
+A locally runnable gateway for reliable webhook delivery. The implemented ingress path verifies HMAC signatures, deduplicates requests by idempotency key, and atomically stores each event with an outbox row. Subscriber delivery, retries, DLQ handling, and manual replay are planned.
 
-**Модель надёжности:** `at-least-once` плюс идемпотентность. `exactly-once` не поддерживается.
+**Reliability model:** `at-least-once` plus idempotency. `exactly-once` is not supported.
 
-> Статус: в разработке.
+> Status: under development.
 
-## Статус по возможностям
+## Capability status
 
-| Возможность | Статус |
+| Capability | Status |
 | --- | --- |
-| uv workspace, линт/типы (`ruff`, `pyright`), инфраструктура Docker Compose | Готово |
-| Django-слой, кастомная модель пользователя, доменные модели `Event`, `OutboxMessage`, `Subscriber` и `DeliveryAttempt`, миграции | Готово |
-| Контракт записи `persist_event`: `Event` + `OutboxMessage` в одной транзакции, идемпотентность на `UNIQUE` | Готово |
-| Сервис `ingest`: приложение FastAPI, пул asyncpg, эндпоинт `/health` | Готово |
-| Тесты идемпотентности контракта записи | Готово |
-| Проверка HMAC: constant-time сравнение, защита от повтора по timestamp | Готово |
-| Тесты проверки подписи | Готово |
-| Эндпоинт приёма `POST /v1/webhooks/{source_slug}`: проверка источника, подписи и предела размера тела | Готово |
-| Запись события на приёме: ключ идемпотентности, `persist_event`, `202` после фиксации транзакции | Готово |
-| Тесты приёма: эндпоинт, негативы, обработчик необработанных исключений | Готово |
-| Тесты барьеров БД: ограничение `UNIQUE`, атомарность записи события и outbox | Готово |
-| Доставка: публикатор outbox, RabbitMQ, Celery-воркер, HTTP подписчику | В плане |
-| Автоповторы, `DLQ`, ручной повтор | В плане |
-| Django Admin: просмотр принятых событий, запрет правки и удаления | Готово |
-| Управляющий слой Django/DRF: CRUD источников и подписчиков, аудит | В плане |
-| Демо-подписчик (`200`/`500`/таймаут), полная упаковка Docker | В плане |
+| uv workspace, linting and type checks (`ruff`, `pyright`), Docker Compose infrastructure | Done |
+| Django layer, custom user model, domain models `Event`, `OutboxMessage`, `Subscriber`, and `DeliveryAttempt`, migrations | Done |
+| `persist_event` write contract: `Event` + `OutboxMessage` in one transaction, idempotency enforced by `UNIQUE` | Done |
+| `ingest` service: FastAPI application, asyncpg pool, `/health` endpoint | Done |
+| Idempotency tests for the persistence contract | Done |
+| HMAC verification: constant-time comparison and timestamp replay protection | Done |
+| Signature verification tests | Done |
+| Ingress endpoint `POST /v1/webhooks/{source_slug}`: source, signature, and body-size validation | Done |
+| Event persistence during ingress: idempotency key, `persist_event`, `202` after transaction commit | Done |
+| Ingress tests: endpoint, negative cases, unhandled exception handler | Done |
+| Database barrier tests: `UNIQUE` constraint and atomic event + outbox persistence | Done |
+| Delivery: outbox publisher, RabbitMQ, Celery worker, subscriber HTTP call | Planned |
+| Automatic retries, `DLQ`, manual replay | Planned |
+| Django Admin: view accepted events, prevent edits and deletion | Done |
+| Django/DRF management layer: source and subscriber CRUD, audit | Planned |
+| Demo subscriber (`200`/`500`/timeout), complete Docker packaging | Planned |
 
-## Архитектура
+## Architecture
 
-Три сервиса вокруг PostgreSQL как источника истины:
+Three services around PostgreSQL as the source of truth:
 
 ```
-вебхук -> [ingest: FastAPI]   приём, HMAC, идемпотентность,
-                              Event + OutboxMessage в одной транзакции -> 202
+webhook -> [ingest: FastAPI]   ingestion, HMAC, idempotency,
+                              Event + OutboxMessage in one transaction -> 202
                     |
                     v
-            [PostgreSQL]  источник истины (события, outbox, попытки доставки)
+            [PostgreSQL]  source of truth (events, outbox, delivery attempts)
                     ^
                     |
-[management: Django/DRF] управляющий слой, публикатор outbox, Celery-воркеры
+[management: Django/DRF] management layer; outbox publisher and Celery workers (planned)
                     |
                     v
-              [RabbitMQ] транспорт -> доставка подписчику
+              [RabbitMQ] transport (planned) -> subscriber delivery (planned)
 ```
 
-- `ingest/` - FastAPI, горячий путь приёма (планируется как узкий вход, не второй управляющий API).
-- `management/` - Django/DRF: модели, миграции, админка, аудит, публикатор outbox, воркеры доставки. Django владеет схемой.
-- `shared/` - общий контракт записи между сервисами (`persist_event`).
-- Redis - ограничение частоты на приёме (не источник истины, не брокер).
+- `ingest/`: FastAPI webhook ingress hot path. It remains a narrow entry point, not a second management API.
+- `management/`: Django models, migrations, read-only event administration, and planned DRF CRUD, audit, outbox publisher, and delivery workers. Django owns the database schema.
+- `shared/`: shared persistence contract between services (`persist_event`).
+- Redis: planned ingress rate limiting. It is not a source of truth or a broker.
 
-## Технологии
+## Technology
 
-- [Python 3.12](https://docs.python.org/3.12/), пакеты через [uv](https://docs.astral.sh/uv/)
-- [FastAPI](https://fastapi.tiangolo.com/) - горячий путь приёма
-- [Django 5.2](https://docs.djangoproject.com/en/5.2/) + [DRF](https://www.django-rest-framework.org/) - управляющий слой
-- [PostgreSQL 16](https://www.postgresql.org/docs/16/) - источник истины, драйвер [asyncpg](https://magicstack.github.io/asyncpg/) и [psycopg 3](https://www.psycopg.org/psycopg3/)
-- [RabbitMQ](https://www.rabbitmq.com/) + [Celery](https://docs.celeryq.dev/) - доставка
-- [Redis](https://redis.io/) - ограничение частоты приёма
-- Качество: [ruff](https://docs.astral.sh/ruff/), [pytest](https://docs.pytest.org/), [pyright](https://microsoft.github.io/pyright/)
+- [Python 3.12](https://docs.python.org/3.12/), packages managed with [uv](https://docs.astral.sh/uv/)
+- [FastAPI](https://fastapi.tiangolo.com/): webhook ingress hot path
+- [Django 5.2](https://docs.djangoproject.com/en/5.2/) + [DRF](https://www.django-rest-framework.org/): Django management foundations, with DRF CRUD planned
+- [PostgreSQL 16](https://www.postgresql.org/docs/16/): source of truth, using [asyncpg](https://magicstack.github.io/asyncpg/) and [psycopg 3](https://www.psycopg.org/psycopg3/)
+- [RabbitMQ](https://www.rabbitmq.com/) + [Celery](https://docs.celeryq.dev/): planned delivery pipeline
+- [Redis](https://redis.io/): planned ingress rate limiting
+- Quality: [ruff](https://docs.astral.sh/ruff/), [pytest](https://docs.pytest.org/), [pyright](https://microsoft.github.io/pyright/)
 
-## Требования
+## Requirements
 
 - Python 3.12
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- Docker и Docker Compose
+- Docker and Docker Compose
 
-## Запуск
+## Run locally
 
-Все команды из корня репозитория.
+Run every command from the repository root unless a step says otherwise.
 
 ```bash
 git clone https://github.com/hawkxdev/webhookops.git
 cd webhookops
 ```
 
-Переменные окружения (значения для локали задай сам):
+Create the local environment file and set local values yourself:
 
 ```bash
 cp .env.example .env
 ```
 
-`.env.example` содержит `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `SECRET_KEY`, `GENERIC_JSON_HMAC_SECRET`.
+`.env.example` contains `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD`, `SECRET_KEY`, and `GENERIC_JSON_HMAC_SECRET`.
 
-Зависимости и инфраструктура:
+Install dependencies and start the infrastructure:
 
 ```bash
 uv sync
 docker compose up -d postgres rabbitmq redis
 ```
 
-Схема базы и суперпользователь (из каталога `management/`):
+Apply the database schema and create a superuser from `management/`:
 
 ```bash
 cd management
@@ -98,52 +98,52 @@ uv run python manage.py migrate
 uv run python manage.py createsuperuser
 ```
 
-Django-админка поднимается на `http://127.0.0.1:8000/admin/` после `uv run python manage.py runserver`.
+Django Admin is available at `http://127.0.0.1:8000/admin/` after running `uv run python manage.py runserver`.
 
-Сервис приёма `ingest` (из корня репозитория, порт 8001, чтобы не спорить с Django на 8000):
+Start the `ingest` service from the repository root on port 8001, leaving port 8000 for Django:
 
 ```bash
 uv run uvicorn ingest.main:app --reload --port 8001
 curl http://127.0.0.1:8001/health
 ```
 
-Ответ `{"status":"ok"}` означает, что приложение поднялось и база отвечает.
+The response `{"status":"ok"}` confirms that the application is running and the database is reachable.
 
-### Приём вебхука
+### Webhook ingestion
 
 ```
 POST /v1/webhooks/{source_slug}
 ```
 
-В минимальной версии известен один источник: `generic_json`.
+The current minimal version recognizes one source: `generic_json`.
 
-Заголовки:
+Headers:
 
-| Заголовок | Назначение |
+| Header | Purpose |
 | --- | --- |
-| `X-Timestamp` | обязательный: момент отправки в секундах Unix, допуск 300 секунд |
-| `X-Signature-256` | обязательный: HMAC-SHA256 в hex по строке `{timestamp}.{сырое тело}` |
-| `Idempotency-Key` | необязательный: ключ дедупликации от отправителя, до 255 символов ASCII. При отсутствии выводится как `sha256` сырого тела |
+| `X-Timestamp` | required: Unix timestamp in seconds, with a 300-second tolerance |
+| `X-Signature-256` | required: hexadecimal HMAC-SHA256 digest of `{timestamp}.{raw body}` |
+| `Idempotency-Key` | optional: sender-provided deduplication key, up to 255 ASCII characters. If omitted, it is derived as the raw body SHA-256 digest |
 
-Секрет берётся из переменной окружения `GENERIC_JSON_HMAC_SECRET`.
+The secret comes from the `GENERIC_JSON_HMAC_SECRET` environment variable.
 
-Тело должно быть JSON-объектом. Оно разбирается только после подтверждённой подписи: до неё запрос недоверенный, а разбор - работа по команде отправителя.
+The request body must be a JSON object. It is parsed only after the signature is verified: before verification, the request is untrusted and parsing would perform sender-controlled work.
 
-Коды ответа:
+Response codes:
 
-| Код | Когда |
+| Code | Condition |
 | --- | --- |
-| `202 Accepted` | событие сохранено вместе со строкой `OutboxMessage`, транзакция зафиксирована. Повтор с тем же ключом получает такой же ответ и второго события не создаёт |
-| `400 Bad Request` | подпись верна, но тело непригодно: не разбирается как JSON (`malformed_json`), разобралось не в объект (`payload_not_object`) или заголовок ключа не проходит по набору символов и длине (`invalid_idempotency_key`) |
-| `403 Forbidden` | подпись не подтверждена: нет заголовков, неверная подпись, изменённое тело или просроченная метка. Причина наружу не раскрывается |
-| `404 Not Found` | неизвестный `source_slug` |
-| `413 Content Too Large` | тело больше 1 МиБ |
+| `202 Accepted` | the event and its `OutboxMessage` row are stored and the transaction is committed. A request with the same key receives the same response and does not create a second event |
+| `400 Bad Request` | the signature is valid, but the body cannot be parsed as JSON (`malformed_json`), is not an object (`payload_not_object`), or the idempotency key header fails character or length validation (`invalid_idempotency_key`) |
+| `403 Forbidden` | the signature cannot be verified: headers are missing, the signature is invalid, the body changed, or the timestamp expired. The external response does not disclose the specific reason |
+| `404 Not Found` | `source_slug` is unknown |
+| `413 Content Too Large` | the body exceeds 1 MiB |
 
-Ответы `4xx` различаются по строгости намеренно. До проверки подписи все причины отказа дают один и тот же `403`, иначе отправитель подбирал бы верный запрос по различиям в ответах. После подписи отправитель известен, и код ответа называет конкретную причину.
+The `4xx` responses intentionally differ only after authentication. Before signature verification, all rejection causes return the same `403`; otherwise, a sender could use response differences to iteratively construct a valid request. After verification, the sender is known and the response identifies the relevant request error.
 
-## Проверки качества
+## Quality checks
 
-Из корня репозитория:
+Run from the repository root:
 
 ```bash
 uv run ruff check .
@@ -151,16 +151,16 @@ uv run ruff format --check .
 uv run pytest
 ```
 
-## Компромиссы
+## Trade-offs
 
-- **`at-least-once`, не `exactly-once`.** Повторы неизбежны, дубли ловятся идемпотентностью на уникальном ограничении PostgreSQL, а не проверкой в коде. Однократная доставка через сеть не гарантируется.
-- **SQL-диалект PostgreSQL, не переносимый SQL.** Проект использует родные сильные стороны Postgres (`jsonb`, `ON CONFLICT`, `RETURNING`) ради идемпотентности одним запросом. Цена - привязка к СУБД.
-- **Граница зависимостей не равна границе деплоя.** Один `uv.lock` на все сервисы доказывает совместимость FastAPI и Django, но сервисы остаются отдельными процессами и контейнерами.
+- **`at-least-once`, not `exactly-once`.** Retries are unavoidable. PostgreSQL uniqueness provides idempotent duplicate handling instead of an application-level pre-check. The network cannot guarantee single delivery.
+- **PostgreSQL-specific SQL, not portable SQL.** The project uses PostgreSQL features (`jsonb`, `ON CONFLICT`, `RETURNING`) to provide idempotency in one query. The cost is database coupling.
+- **The dependency boundary is not the deployment boundary.** One `uv.lock` proves that the FastAPI and Django dependencies are compatible, while the services remain separate processes and containers.
 
-## Известные ограничения
+## Known limitations
 
 [Issues](https://github.com/hawkxdev/webhookops/issues)
 
-## Автор
+## Author
 
 [hawkxdev](https://github.com/hawkxdev)

@@ -1,1 +1,1 @@
-Общие контракты между ingest и management.
+Shared persistence contracts for ingest and management.

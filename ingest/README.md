@@ -1,1 +1,1 @@
-FastAPI: горячий путь приёма вебхуков.
+FastAPI: the webhook ingress hot path.
