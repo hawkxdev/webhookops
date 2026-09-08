@@ -1,24 +1,24 @@
-"""Доменные модели вебхуков."""
+"""Webhook domain models."""
 
 from django.core.validators import URLValidator
 from django.db import models
 
 
 class Event(models.Model):
-    """Принятое событие вебхука."""
+    """Accepted webhook event."""
 
-    source = models.CharField(max_length=50, verbose_name='Источник')
+    source = models.CharField(max_length=50, verbose_name='Source')
     idempotency_key = models.CharField(
-        max_length=255, verbose_name='Ключ идемпотентности'
+        max_length=255, verbose_name='Idempotency key'
     )
-    payload = models.JSONField(verbose_name='Тело вебхука')
+    payload = models.JSONField(verbose_name='Webhook body')
     received_at = models.DateTimeField(
-        auto_now_add=True, verbose_name='Получено'
+        auto_now_add=True, verbose_name='Received at'
     )
 
     class Meta:
-        verbose_name = 'Событие'
-        verbose_name_plural = 'События'
+        verbose_name = 'Event'
+        verbose_name_plural = 'Events'
         constraints = [
             models.UniqueConstraint(
                 fields=['source', 'idempotency_key'],
@@ -27,69 +27,85 @@ class Event(models.Model):
         ]
 
     def __str__(self):
-        """Источник и ключ."""
+        """Source and key."""
         return f'{self.source} - {self.idempotency_key}'
 
 
 class OutboxStatus(models.TextChoices):
-    """Статусы исходящего сообщения."""
+    """Outbox message statuses."""
 
-    PENDING = 'pending', 'Ожидает отправки'
-    # Статусы добавятся вместе с реализацией публикатора.
+    PENDING = 'pending', 'Awaiting publication'
+    PUBLISHED = 'published', 'Published'
+    # A publish failure rolls the transaction back and leaves pending.
+    # failed (terminal rejection) arrives with the attempt counter.
 
 
 class OutboxMessage(models.Model):
-    """Заявка на публикацию события."""
+    """Event publication request."""
 
     status = models.CharField(
         max_length=20,
         choices=OutboxStatus.choices,
         default=OutboxStatus.PENDING,
-        verbose_name='Статус',
+        verbose_name='Status',
     )
     created_at = models.DateTimeField(
-        auto_now_add=True, verbose_name='Создано'
+        auto_now_add=True, verbose_name='Created at'
     )
+    published_at = models.DateTimeField(null=True, verbose_name='Published at')
 
     event = models.ForeignKey(
         Event,
         on_delete=models.CASCADE,
         related_name='outbox_messages',
-        verbose_name='Событие',
+        verbose_name='Event',
     )
 
     class Meta:
-        verbose_name = 'Исходящее сообщение'
-        verbose_name_plural = 'Исходящие сообщения'
+        verbose_name = 'Outbox message'
+        verbose_name_plural = 'Outbox messages'
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(status__in=OutboxStatus.values),
                 name='outbox_status_valid',
-            )
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(
+                        status=OutboxStatus.PENDING,
+                        published_at__isnull=True,
+                    )
+                    | models.Q(
+                        status=OutboxStatus.PUBLISHED,
+                        published_at__isnull=False,
+                    )
+                ),
+                name='outbox_publication_consistent',
+            ),
         ]
 
     def __str__(self):
-        """Статус и время."""
+        """Status and time."""
         return f'{self.status} - {self.created_at}'
 
 
 class Subscriber(models.Model):
-    """Получатель доставленных событий."""
+    """Delivered event recipient."""
 
-    name = models.CharField(max_length=50, verbose_name='Имя')
+    name = models.CharField(max_length=50, verbose_name='Name')
     target_url = models.URLField(
         verbose_name='URL',
         validators=[URLValidator(schemes=['https', 'http'])],
     )
-    is_active = models.BooleanField(verbose_name='Активный', default=True)
+    is_active = models.BooleanField(verbose_name='Active', default=True)
     created_at = models.DateTimeField(
-        auto_now_add=True, verbose_name='Создано'
+        auto_now_add=True, verbose_name='Created at'
     )
-    updated_at = models.DateTimeField(auto_now=True, verbose_name='Обновлено')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='Updated at')
 
     class Meta:
-        verbose_name = 'Подписчик'
-        verbose_name_plural = 'Подписчики'
+        verbose_name = 'Subscriber'
+        verbose_name_plural = 'Subscribers'
         constraints = [
             models.UniqueConstraint(
                 fields=['name'],
@@ -105,43 +121,45 @@ class Subscriber(models.Model):
         ]
 
     def __str__(self):
-        """Имя подписчика."""
+        """Subscriber name."""
         return self.name
 
 
 class DeliveryAttemptStatus(models.TextChoices):
-    """Статусы попыток доставки."""
+    """Delivery attempt statuses."""
 
-    STARTED = 'started', 'Начата'
-    SUCCEEDED = 'succeeded', 'Завершена успешно'
-    FAILED = 'failed', 'Завершена с ошибкой'
+    STARTED = 'started', 'Started'
+    SUCCEEDED = 'succeeded', 'Succeeded'
+    FAILED = 'failed', 'Failed'
 
 
 class DeliveryAttempt(models.Model):
-    """Попытка доставки сообщения."""
+    """Single delivery attempt."""
 
     status = models.CharField(
         max_length=20,
         choices=DeliveryAttemptStatus.choices,
         default=DeliveryAttemptStatus.STARTED,
-        verbose_name='Статус попытки',
+        verbose_name='Attempt status',
     )
 
     attempt_no = models.PositiveSmallIntegerField(
-        verbose_name='Номер попытки',
+        verbose_name='Attempt number',
     )
 
-    started_at = models.DateTimeField(auto_now_add=True, verbose_name='Начата')
+    started_at = models.DateTimeField(
+        auto_now_add=True, verbose_name='Started at'
+    )
 
     http_status = models.PositiveSmallIntegerField(
         null=True,
-        verbose_name='Статус ответа',
+        verbose_name='Response status',
     )
 
-    error = models.CharField(max_length=100, verbose_name='Причина отказа')
+    error = models.CharField(max_length=100, verbose_name='Failure reason')
 
     finished_at = models.DateTimeField(
-        null=True, blank=True, verbose_name='Завершено'
+        null=True, blank=True, verbose_name='Finished at'
     )
 
     event = models.ForeignKey(
@@ -149,19 +167,19 @@ class DeliveryAttempt(models.Model):
         on_delete=models.CASCADE,
         db_index=False,
         related_name='delivery_attempts',
-        verbose_name='Событие',
+        verbose_name='Event',
     )
 
     subscriber = models.ForeignKey(
         Subscriber,
         on_delete=models.PROTECT,
         related_name='delivery_attempts',
-        verbose_name='Подписчик',
+        verbose_name='Subscriber',
     )
 
     class Meta:
-        verbose_name = 'Попытка доставки сообщения'
-        verbose_name_plural = 'Попытки доставки сообщений'
+        verbose_name = 'Delivery attempt'
+        verbose_name_plural = 'Delivery attempts'
         constraints = [
             models.UniqueConstraint(
                 fields=['event', 'subscriber', 'attempt_no'],
@@ -223,5 +241,5 @@ class DeliveryAttempt(models.Model):
         ]
 
     def __str__(self):
-        """Описание попытки доставки."""
+        """Delivery attempt description."""
         return f'{self.event} {self.subscriber} {self.attempt_no}'

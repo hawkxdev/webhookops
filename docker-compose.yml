@@ -1,3 +1,7 @@
+# The Compose project name is pinned explicitly: by default it comes
+# from the directory name and changes if the repository is moved or renamed.
+name: webhookops
+
 services:
   postgres:
     image: postgres:16
@@ -22,8 +26,8 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     ports:
-      - "127.0.0.1:5672:5672"    # AMQP, протокол брокера
-      - "127.0.0.1:15672:15672"  # веб-панель
+      - "127.0.0.1:5672:5672"    # AMQP, broker protocol
+      - "127.0.0.1:15672:15672"  # management web UI
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 15s
@@ -42,7 +46,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-# === Прикладные сервисы ===
+# === Application services ===
 # ingest:
 #   build: ./ingest
 #   command: uvicorn ingest.main:app --host 0.0.0.0 --port 8000
