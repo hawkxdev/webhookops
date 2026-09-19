@@ -1,5 +1,7 @@
 """Webhook domain models."""
 
+from typing import TYPE_CHECKING
+
 from django.core.validators import URLValidator
 from django.db import models
 
@@ -61,9 +63,20 @@ class OutboxMessage(models.Model):
         verbose_name='Event',
     )
 
+    if TYPE_CHECKING:
+        # Workaround: pyright cannot see the FK column Django creates.
+        event_id: int
+
     class Meta:
         verbose_name = 'Outbox message'
         verbose_name_plural = 'Outbox messages'
+        indexes = [
+            models.Index(
+                fields=['created_at'],
+                condition=models.Q(status=OutboxStatus.PENDING),
+                name='outbox_pending_created_at',
+            ),
+        ]
         constraints = [
             models.CheckConstraint(
                 condition=models.Q(status__in=OutboxStatus.values),
