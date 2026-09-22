@@ -1,13 +1,15 @@
 """Outbox publisher entry point."""
 
 from django.core.management.base import BaseCommand, CommandError
+from kombu.exceptions import OperationalError
 
 from management.webhooks.publisher import publish_pending
+from management.webhooks.tasks import deliver_event
 
 
-def submit_delivery(event_id):
-    """Raises until the delivery task lands."""
-    raise NotImplementedError('delivery task is not wired yet')
+def submit_delivery(event_id: int) -> None:
+    """Queues one delivery task."""
+    deliver_event.delay(event_id)
 
 
 class Command(BaseCommand):
@@ -16,6 +18,7 @@ class Command(BaseCommand):
     help = 'Takes pending outbox rows and hands them to the broker submitter.'
 
     def add_arguments(self, parser):
+        """Registers batch size option."""
         parser.add_argument(
             '--batch-size',
             type=int,
@@ -24,6 +27,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        """Executes one publisher pass."""
         try:
             published = publish_pending(
                 options['batch_size'],
@@ -31,6 +35,6 @@ class Command(BaseCommand):
             )
         except ValueError as error:
             raise CommandError(str(error))
-        except NotImplementedError:
-            raise CommandError('delivery task is not wired yet')
+        except OperationalError as error:
+            raise CommandError(f'broker unavailable: {error}') from error
         self.stdout.write(self.style.SUCCESS(f'Published {published} rows.'))

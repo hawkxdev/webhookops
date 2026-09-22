@@ -21,7 +21,8 @@ A locally runnable gateway for reliable webhook delivery. The implemented ingres
 | Event persistence during ingress: idempotency key, `persist_event`, `202` after transaction commit | Done |
 | Ingress tests: endpoint, negative cases, unhandled exception handler | Done |
 | Database barrier tests: `UNIQUE` constraint and atomic event + outbox persistence | Done |
-| Delivery: outbox publisher, RabbitMQ, Celery worker, subscriber HTTP call | Planned |
+| Outbox publisher: batch take with `FOR UPDATE SKIP LOCKED`, partial index, management command, concurrency tests | Done |
+| Delivery: RabbitMQ, Celery worker, subscriber HTTP call | Planned |
 | Automatic retries, `DLQ`, manual replay | Planned |
 | Django Admin: view accepted events, prevent edits and deletion | Done |
 | Django/DRF management layer: source and subscriber CRUD, audit | Planned |
