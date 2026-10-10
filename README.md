@@ -22,7 +22,8 @@ A locally runnable gateway for reliable webhook delivery. The implemented ingres
 | Ingress tests: endpoint, negative cases, unhandled exception handler | Done |
 | Database barrier tests: `UNIQUE` constraint and atomic event + outbox persistence | Done |
 | Outbox publisher: batch take with `FOR UPDATE SKIP LOCKED`, partial index, management command, concurrency tests | Done |
-| Delivery: RabbitMQ, Celery worker, subscriber HTTP call | Planned |
+| Outbox task dispatch through RabbitMQ, Celery application, task and command boundary tests | Done |
+| Subscriber HTTP delivery and delivery attempt recording | Planned |
 | Automatic retries, `DLQ`, manual replay | Planned |
 | Django Admin: view accepted events, prevent edits and deletion | Done |
 | Django/DRF management layer: source and subscriber CRUD, audit | Planned |
@@ -40,15 +41,15 @@ webhook -> [ingest: FastAPI]   ingestion, HMAC, idempotency,
             [PostgreSQL]  source of truth (events, outbox, delivery attempts)
                     ^
                     |
-[management: Django/DRF] management layer; outbox publisher and Celery workers (planned)
+[management: Django/DRF] management layer; outbox publisher and Celery task
                     |
                     v
-              [RabbitMQ] transport (planned) -> subscriber delivery (planned)
+              [RabbitMQ] transport -> [Celery worker] -> subscriber delivery (planned)
 ```
 
-- `ingest/`: FastAPI webhook ingress hot path. It remains a narrow entry point, not a second management API.
-- `management/`: Django models, migrations, read-only event administration, and planned DRF CRUD, audit, outbox publisher, and delivery workers. Django owns the database schema.
-- `shared/`: shared persistence contract between services (`persist_event`).
+- `src/ingest/`: FastAPI webhook ingress hot path. It remains a narrow entry point, not a second management API.
+- `src/management/`: Django models, migrations, read-only event administration, outbox publisher, and Celery task. DRF CRUD, audit, and subscriber HTTP delivery are planned. Django owns the database schema.
+- `src/shared/`: shared persistence contract between services (`persist_event`).
 - Redis: planned ingress rate limiting. It is not a source of truth or a broker.
 
 ## Technology
@@ -57,7 +58,7 @@ webhook -> [ingest: FastAPI]   ingestion, HMAC, idempotency,
 - [FastAPI](https://fastapi.tiangolo.com/): webhook ingress hot path
 - [Django 5.2](https://docs.djangoproject.com/en/5.2/) + [DRF](https://www.django-rest-framework.org/): Django management foundations, with DRF CRUD planned
 - [PostgreSQL 16](https://www.postgresql.org/docs/16/): source of truth, using [asyncpg](https://magicstack.github.io/asyncpg/) and [psycopg 3](https://www.psycopg.org/psycopg3/)
-- [RabbitMQ](https://www.rabbitmq.com/) + [Celery](https://docs.celeryq.dev/): planned delivery pipeline
+- [RabbitMQ](https://www.rabbitmq.com/) + [Celery](https://docs.celeryq.dev/): outbox task dispatch, with subscriber HTTP delivery planned
 - [Redis](https://redis.io/): planned ingress rate limiting
 - Quality: [ruff](https://docs.astral.sh/ruff/), [pytest](https://docs.pytest.org/), [pyright](https://microsoft.github.io/pyright/)
 
@@ -91,15 +92,14 @@ uv sync
 docker compose up -d postgres rabbitmq redis
 ```
 
-Apply the database schema and create a superuser from `management/`:
+Apply the database schema and create a superuser from the repository root:
 
 ```bash
-cd management
-uv run python manage.py migrate
-uv run python manage.py createsuperuser
+uv run python src/management/manage.py migrate
+uv run python src/management/manage.py createsuperuser
 ```
 
-Django Admin is available at `http://127.0.0.1:8000/admin/` after running `uv run python manage.py runserver`.
+Django Admin is available at `http://127.0.0.1:8000/admin/` after running `uv run python src/management/manage.py runserver`.
 
 Start the `ingest` service from the repository root on port 8001, leaving port 8000 for Django:
 
@@ -109,6 +109,24 @@ curl http://127.0.0.1:8001/health
 ```
 
 The response `{"status":"ok"}` confirms that the application is running and the database is reachable.
+
+### Outbox task dispatch
+
+Start a Celery worker from the repository root:
+
+```bash
+uv run celery -A management.config worker --loglevel=INFO --concurrency=1
+```
+
+In another terminal, publish one pending outbox row:
+
+```bash
+uv run python src/management/manage.py publish_outbox --batch-size=1
+```
+
+The publisher queues each event ID and marks the batch `published` after broker acceptance. If publication fails, the database transaction rolls back and the rows remain `pending`. Messages already accepted by the broker can still execute, so retrying publication can produce duplicates.
+
+The task currently skips missing events with a warning and raises `NotImplementedError` for existing events. This demonstrates the broker and worker connection; subscriber HTTP delivery and attempt recording are not implemented yet. A `published` outbox status does not mean that a subscriber received the event.
 
 ### Webhook ingestion
 

@@ -13,14 +13,16 @@ class Recorder:
     """Collects submitted event ids."""
 
     def __init__(self):
+        """Submitted event identifier storage."""
         self.event_ids = []
 
     def __call__(self, event_id):
+        """Submitted event identifier recording."""
         self.event_ids.append(event_id)
 
 
 def _make_outbox(key):
-    """Creates one event with a pending outbox row."""
+    """Pending outbox row creation."""
     event = Event.objects.create(
         source='generic_json',
         idempotency_key=key,
@@ -30,7 +32,7 @@ def _make_outbox(key):
 
 
 class PublishPendingTest(TransactionTestCase):
-    """Single publisher pass over pending rows."""
+    """Pending outbox publication tests."""
 
     def test_publishes_whole_batch_and_marks_rows(self):
         events = [_make_outbox(f'k{i}') for i in range(3)]
@@ -75,9 +77,10 @@ class PublishPendingTest(TransactionTestCase):
 
 
 class PublisherConcurrencyTest(TransactionTestCase):
-    """Two concurrent takes split pending rows without overlap."""
+    """Concurrent outbox publication tests."""
 
     def _connect(self):
+        """Raw PostgreSQL connection creation."""
         params = connection.settings_dict
         kwargs = {
             'dbname': params['NAME'],
@@ -90,6 +93,7 @@ class PublisherConcurrencyTest(TransactionTestCase):
         return psycopg.connect(**kwargs)
 
     def _take_pending(self, conn, limit):
+        """Pending row identifier selection."""
         query = sql.SQL(
             'SELECT id FROM {} WHERE status = {} '
             'ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT %s'
@@ -102,6 +106,7 @@ class PublisherConcurrencyTest(TransactionTestCase):
             return [row[0] for row in cursor.fetchall()]
 
     def _mark_published(self, conn, ids):
+        """Publication state SQL update."""
         query = sql.SQL(
             'UPDATE {} SET status = {}, published_at = now() '
             'WHERE id = ANY(%s)'

@@ -14,3 +14,6 @@ staticfiles/
 .vscode/
 ._*
 *.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
