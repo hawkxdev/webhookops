@@ -6,7 +6,7 @@ from urllib.parse import quote
 import environ
 
 BASE_DIR = Path(__file__).resolve().parents[3]
-WORKSPACE_ROOT = BASE_DIR.parent
+WORKSPACE_ROOT = BASE_DIR.parent.parent
 
 env = environ.Env(DEBUG=(bool, False))
 environ.Env.read_env(WORKSPACE_ROOT / '.env')
@@ -114,3 +114,5 @@ CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_CONTROL_QUEUE_EXCLUSIVE = True
+CELERY_EVENT_QUEUE_EXCLUSIVE = True

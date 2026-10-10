@@ -309,7 +309,7 @@ wheels = [
 [[package]]
 name = "ingest"
 version = "0.1.0"
-source = { editable = "ingest" }
+source = { editable = "src/ingest" }
 dependencies = [
     { name = "asyncpg" },
     { name = "fastapi" },
@@ -328,7 +328,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.31.0" },
     { name = "fastapi", specifier = ">=0.139.2" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
-    { name = "shared", editable = "shared" },
+    { name = "shared", editable = "src/shared" },
     { name = "uvicorn", specifier = ">=0.51.0" },
 ]
 
@@ -362,7 +362,7 @@ wheels = [
 [[package]]
 name = "management"
 version = "0.1.0"
-source = { editable = "management" }
+source = { editable = "src/management" }
 dependencies = [
     { name = "celery" },
     { name = "django" },
@@ -383,7 +383,7 @@ requires-dist = [
     { name = "django", specifier = ">=5.2,<5.3" },
     { name = "django-environ", specifier = ">=0.14.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4" },
-    { name = "shared", editable = "shared" },
+    { name = "shared", editable = "src/shared" },
 ]
 
 [package.metadata.requires-dev]
@@ -683,7 +683,7 @@ wheels = [
 [[package]]
 name = "shared"
 version = "0.1.0"
-source = { editable = "shared" }
+source = { editable = "src/shared" }
 dependencies = [
     { name = "asyncpg" },
 ]
